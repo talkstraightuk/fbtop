@@ -1,0 +1,80 @@
+#!/usr/bin/php
+<?php
+/**
+ * fbtop
+ *
+ * This script will parse the filebeat registry file and display the current offset of each log file
+ *
+ * @author     Gary Turner <gary.turner@talk-straight.com>
+ * @copyright  2024 Talk Straight Ltd
+ * @license    MIT License
+ * @version    1.0.0
+ * @link       https://github.com/talkstraightuk/fbtop
+ */
+
+$registryFile = '/var/lib/filebeat/registry/filebeat/log.json'; // Change this to the location of your filebeat registry file
+
+if (!file_exists($registryFile)) {
+    echo 'Could not locate filebeat registry: ' . $registryFile . "\n";
+    exit(1);
+}
+
+while (1) {
+    cls();
+    $logLines = file_get_contents($registryFile);
+    $inodeMap = [];
+    $inodeFilemap = [];
+
+    foreach (explode("\n", $logLines) as $line) {
+        $logJson = json_decode($line, true);
+        if (isset($logJson['k'])) {
+            $inode = $logJson['v']['FileStateOS']['inode'];
+            $offset = $logJson['v']['offset'];
+
+            if (!isset($inodeFilemap[$inode])) {
+                $logPath = preg_replace('#/[^/]*$#', '', $logJson['v']['source']);
+                $cmd = 'find '.$logPath.' -inum '.$inode;
+                $filename = shell_exec($cmd);
+                $inodeFilemap[$inode] = trim($filename);
+            }
+
+            $logJson['v']['source'] = $inodeFilemap[$inode];
+            $logJson['filesize'] = filesize($logJson['v']['source']);
+            if ($offset == $logJson['filesize']) {
+                $logJson['percent'] = 100;
+            } else {
+                $logJson['percent'] = number_format(($offset / $logJson['filesize']) * 100, 2, '.', '');
+            }
+
+            if (!isset($inodeMap[$inode])) {
+                $logJson['last_offset'] = $logJson['v']['offset'];
+                $logJson['rate'] = 0;
+                $inodeMap[$inode] = $logJson;
+            } elseif ($logJson['v']['offset'] > $inodeMap[$inode]['v']['offset']) {
+                $logJson['rate'] = ($logJson['v']['offset'] - $inodeMap[$inode]['last_offset']) / 1000;
+                $logJson['last_offset'] = $logJson['v']['offset'];
+                $inodeMap[$inode] = $logJson;
+            }
+        }
+    }
+
+    printf("%-6s%-60s%-15s%-15s%-8s%-7s\n", 'Inode', 'Filename', 'Filesize', 'Offset', '%', 'Rate');
+
+    foreach ($inodeMap as $entry) {
+        printf(
+            "%-6d%-60s%-15s%-15d%-8s%-7s\n",
+            $entry['v']['FileStateOS']['inode'],
+            $entry['v']['source'],
+            $entry['filesize'],
+            $entry['v']['offset'],
+            $entry['percent'].'%',
+            $entry['rate'] . 'kb/s'
+        );
+    }
+    sleep(1);
+}
+
+function cls()
+{
+    print("\033[2J\033[;H");
+}
