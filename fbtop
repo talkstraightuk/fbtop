@@ -8,11 +8,40 @@
  * @author     Gary Turner <gary.turner@talk-straight.com>
  * @copyright  2024 Talk Straight Ltd
  * @license    MIT Licence
- * @version    1.0.0
+ * @version    1.0.1
  * @link       https://github.com/talkstraightuk/fbtop
  */
 
-$registryFile = '/var/lib/filebeat/registry/filebeat/log.json'; // Change this to the location of your filebeat registry file
+$short_options = "f:s:h::n::";
+$long_options = ["filename:","sleep:","help::","noloop::"];
+$options = getopt($short_options, $long_options);
+
+if (isset($options["h"]) || isset($options["help"])) {
+    echo "fbtop - A simple filebeat registry monitor\n\n";
+    echo " -h --help\t\tDisplay this help message\n";
+    echo " -s --sleep <seconds>\tThe number of seconds to sleep between updates\n";
+    echo " -f --filename <path>\tThe filebeat registry file to monitor\n";
+    echo " -n --noloop\t\tRun once and exit\n";
+
+    exit(0);
+}
+
+if (isset($options["f"]) || isset($options["filename"])) {
+    $registryFile = isset($options["f"]) ? $options["f"] : $options["filename"];
+} else {
+    $registryFile = '/var/lib/filebeat/registry/filebeat/log.json';
+}
+
+if(isset($options["s"]) || isset($options["sleep"])) {
+    $sleep = isset($options["s"]) ? $options["s"] : $options["sleep"];
+} else {
+    $sleep = 1;
+}
+
+$noloop = false;
+if(isset($options["n"]) || isset($options["noloop"])) {
+    $noloop = true;
+}
 
 if (!file_exists($registryFile)) {
     echo 'Could not locate filebeat registry: ' . $registryFile . "\n";
@@ -51,7 +80,7 @@ while (1) {
                 $logJson['rate'] = 0;
                 $inodeMap[$inode] = $logJson;
             } elseif ($logJson['v']['offset'] > $inodeMap[$inode]['v']['offset']) {
-                $logJson['rate'] = ($logJson['v']['offset'] - $inodeMap[$inode]['last_offset']) / 1000;
+                $logJson['rate'] = number_format((($logJson['v']['offset'] - $inodeMap[$inode]['last_offset']) / 1000) / $sleep, 2, '.', '');
                 $logJson['last_offset'] = $logJson['v']['offset'];
                 $inodeMap[$inode] = $logJson;
             }
@@ -71,7 +100,12 @@ while (1) {
             $entry['rate'] . 'kb/s'
         );
     }
-    sleep(1);
+
+    if ($noloop) {
+        exit(0);
+    }
+
+    sleep($sleep);
 }
 
 function cls()

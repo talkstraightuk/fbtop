@@ -12,7 +12,14 @@ The tool is useful for identifying whether filebeat is keeping pace with your lo
 ./fbtop
 ```
 
-N.B. If your filebeat is running in a non-standard location, you may need to modify the path to the registry file in the script.
+## Options
+
+```
+-h --help              Display this help message  
+-s --sleep <seconds>   The number of seconds to sleep between updates  
+-f --filename <path>   The filebeat registry file to monitor  
+-n --noloop            Run once and exit  
+```
 
 ## Output
 
